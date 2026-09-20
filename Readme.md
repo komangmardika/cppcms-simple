@@ -7,11 +7,12 @@ Research REST API with [CppCMS](http://cppcms.com/wikipp/en/page/main)
 1. Make sure C++ already active (using XCode)
 2. Install cppcms `brew install cppcms`
 3. Install cmake `brew install cmake`
-4. Run `mkdir build`
-5. Run `cmake ..`
-6. Run `make`
-7. Run `cp ../db.db .` to copy the database example
-8. After executable `cppcms_simple` built, then you can run it by command `./cppcms_simple -c ../config.json`
+4. Install unixODBC `brew install unixodbc` (the prebuilt cppdb libs in `third_party` link against `libodbc.2.dylib`, even though this app only uses SQLite. Without it the build succeeds but the app dies at startup with `dyld: Library not loaded: /opt/homebrew/opt/unixodbc/lib/libodbc.2.dylib`)
+5. Run `mkdir build`
+6. Run `cmake ..`
+7. Run `make`
+8. Run `cp ../db.db .` to copy the database example
+9. After executable `cppcms_simple` built, then you can run it by command `./cppcms_simple -c ../config.json`
 
 Note:
 
@@ -61,3 +62,48 @@ Request body:
 }
 ```
 - `localhost:8080/auth/logout`
+
+At file includes/controllers/Person.h
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/persons` | list every person |
+| POST | `/persons` | create one |
+| GET | `/persons/{id}` | fetch one |
+| PUT | `/persons/{id}` | replace one |
+| DELETE | `/persons/{id}` | delete one |
+
+Request body for POST and PUT (`address` is optional):
+```
+{
+  "name": "Ada Lovelace",
+  "email": "ada@example.com",
+  "address": "12 Analytical Engine Way"
+}
+```
+
+Responses carry only the properties that hold a value, so a person with no
+address has no `address` key at all rather than an explicit `null`:
+```
+{"email":"grace@example.com","id":2,"name":"Grace Hopper"}
+```
+
+The `person` table already exists in `db.db`; there is no migration step. Its
+shape is:
+```
+id      INTEGER      PRIMARY KEY AUTOINCREMENT
+name    VARCHAR(100) NOT NULL
+email   VARCHAR(100) NOT NULL UNIQUE
+address VARCHAR(255)              -- nullable
+```
+
+### Running the tests
+
+From the `build` directory:
+
+```
+make check
+```
+
+That builds `person_tests` and runs it. The suite covers create/read/update/delete
+through `PersonService` against a throwaway SQLite file per test, plus the JSON
+rules above. It links cppdb but not cppcms, so it never starts a web server.

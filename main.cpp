@@ -9,6 +9,7 @@
 #include <map>
 #include <controllers/User.h>
 #include <controllers/Auth.h>
+#include <controllers/Person.h>
 
 class hello : public cppcms::application {  
 public:
@@ -20,6 +21,9 @@ public:
         );
         attach(new Auth(srv), "auth", "/auth/{1}",
             "/auth(/(.*))?", 1
+        );
+        attach(new Person(srv), "persons", "/persons/{1}",
+            "/persons(/(.*))?", 1
         );
         mapper().root("/");
     }
