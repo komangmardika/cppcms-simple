@@ -32,7 +32,7 @@ private:
     void updatePerson(long long id);
     void deletePerson(long long id);
 
-    bool readPersonFromRequest(models::Person &out, std::string &error);
+    bool readJsonBody(picojson::value &out, std::string &error);
 
     // The one place that decides which HTTP status a service outcome deserves.
     static int httpStatusFor(services::PersonService::Status status);

@@ -76,10 +76,16 @@ void Person::listPersons()
 
 void Person::createPerson()
 {
-    models::Person person;
+    picojson::value payload;
     std::string error;
 
-    if (!readPersonFromRequest(person, error)) {
+    if (!readJsonBody(payload, error)) {
+        sendError(400, error);
+        return;
+    }
+
+    models::Person person;
+    if (!models::Person::fromJson(payload, person, error)) {
         sendError(400, error);
         return;
     }
@@ -113,18 +119,31 @@ void Person::showPerson(long long id)
 
 void Person::updatePerson(long long id)
 {
-    models::Person person;
+    picojson::value payload;
     std::string error;
 
-    if (!readPersonFromRequest(person, error)) {
+    if (!readJsonBody(payload, error)) {
         sendError(400, error);
         return;
     }
 
-    // The URL is authoritative for which row is being replaced.
+    // Start from the stored row so the request only has to carry the properties
+    // it actually wants to change.
+    PersonService service(sql());
+    models::Person person;
+    if (!service.findById(id, person)) {
+        sendError(httpStatusFor(PersonService::NotFound), "no person with that id");
+        return;
+    }
+
+    if (!models::Person::applyJson(payload, person, error)) {
+        sendError(400, error);
+        return;
+    }
+
+    // The URL is authoritative for which row is being updated.
     person.setId(id);
 
-    PersonService service(sql());
     const PersonService::Status status = service.update(person, error);
     if (status != PersonService::Success) {
         sendError(httpStatusFor(status), error);
@@ -149,7 +168,7 @@ void Person::deletePerson(long long id)
     sendJson(200, picojson::value(body));
 }
 
-bool Person::readPersonFromRequest(models::Person &out, std::string &error)
+bool Person::readJsonBody(picojson::value &out, std::string &error)
 {
     std::pair<void *, size_t> post_data = request().raw_post_data();
     const std::string raw(reinterpret_cast<char const *>(post_data.first), post_data.second);
@@ -159,12 +178,12 @@ bool Person::readPersonFromRequest(models::Person &out, std::string &error)
         return false;
     }
 
-    picojson::value parsed;
-    const std::string parseError = picojson::parse(parsed, raw);
+    const std::string parseError = picojson::parse(out, raw);
     if (!parseError.empty()) {
         error = "invalid JSON: " + parseError;
         return false;
     }
 
-    return models::Person::fromJson(parsed, out, error);
+    error.clear();
+    return true;
 }

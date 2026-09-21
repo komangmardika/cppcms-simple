@@ -511,6 +511,113 @@ TEST(json_keeps_an_empty_address_distinct_from_a_missing_one)
     CHECK_EQ(obj.find("address")->second.get<std::string>(), std::string(""));
 }
 
+// ---------------------------------------------------------------------------
+// Partial updates: applyJson merges onto an existing person
+// ---------------------------------------------------------------------------
+
+TEST(apply_json_leaves_absent_fields_unchanged)
+{
+    Person person("Ada", "ada@example.com");
+    person.setAddress("Original Street");
+    person.setId(7);
+
+    picojson::value payload;
+    picojson::parse(payload, "{\"name\":\"Ada Byron\"}");
+
+    std::string error;
+    CHECK(Person::applyJson(payload, person, error));
+    CHECK_EQ(person.name(), std::string("Ada Byron"));
+    CHECK_EQ(person.email(), std::string("ada@example.com"));
+    CHECK_EQ(person.address().value(), std::string("Original Street"));
+    CHECK_EQ(person.id().value(), 7LL);
+}
+
+TEST(apply_json_can_update_only_the_address)
+{
+    Person person("Ada", "ada@example.com");
+    person.setAddress("Original Street");
+
+    picojson::value payload;
+    picojson::parse(payload, "{\"address\":\"New Street\"}");
+
+    std::string error;
+    CHECK(Person::applyJson(payload, person, error));
+    CHECK_EQ(person.address().value(), std::string("New Street"));
+    CHECK_EQ(person.name(), std::string("Ada"));
+}
+
+TEST(apply_json_clears_the_address_on_an_explicit_null)
+{
+    Person person("Ada", "ada@example.com");
+    person.setAddress("Original Street");
+
+    picojson::value payload;
+    picojson::parse(payload, "{\"address\":null}");
+
+    std::string error;
+    CHECK(Person::applyJson(payload, person, error));
+    CHECK_FALSE(person.address().hasValue());
+    CHECK_EQ(person.name(), std::string("Ada"));
+}
+
+TEST(apply_json_with_an_empty_object_changes_nothing)
+{
+    Person person("Ada", "ada@example.com");
+    person.setAddress("Original Street");
+
+    picojson::value payload;
+    picojson::parse(payload, "{}");
+
+    std::string error;
+    CHECK(Person::applyJson(payload, person, error));
+    CHECK_EQ(person.name(), std::string("Ada"));
+    CHECK_EQ(person.email(), std::string("ada@example.com"));
+    CHECK_EQ(person.address().value(), std::string("Original Street"));
+}
+
+TEST(apply_json_leaves_the_person_untouched_on_a_type_error)
+{
+    Person person("Ada", "ada@example.com");
+    person.setAddress("Original Street");
+
+    picojson::value payload;
+    picojson::parse(payload, "{\"name\":\"Valid\",\"address\":123}");
+
+    std::string error;
+    CHECK_FALSE(Person::applyJson(payload, person, error));
+    CHECK(error.find("'address' must be a string") != std::string::npos);
+
+    // The earlier valid "name" must not have been applied.
+    CHECK_EQ(person.name(), std::string("Ada"));
+    CHECK_EQ(person.address().value(), std::string("Original Street"));
+}
+
+TEST(partial_update_round_trips_through_the_database)
+{
+    TempDatabase db;
+    PersonService service(db.sql());
+    std::string error;
+
+    Person person("Ada", "ada@example.com");
+    person.setAddress("Original Street");
+    CHECK_EQ(service.create(person, error), PersonService::Success);
+
+    // The payload a client would send to change only the address.
+    Person stored;
+    CHECK(service.findById(person.id().value(), stored));
+
+    picojson::value payload;
+    picojson::parse(payload, "{\"address\":\"New Street\"}");
+    CHECK(Person::applyJson(payload, stored, error));
+    CHECK_EQ(service.update(stored, error), PersonService::Success);
+
+    Person reloaded;
+    CHECK(service.findById(person.id().value(), reloaded));
+    CHECK_EQ(reloaded.address().value(), std::string("New Street"));
+    CHECK_EQ(reloaded.name(), std::string("Ada"));
+    CHECK_EQ(reloaded.email(), std::string("ada@example.com"));
+}
+
 TEST(from_json_reads_every_field)
 {
     picojson::value parsed;

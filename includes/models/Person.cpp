@@ -75,7 +75,7 @@ std::string Person::toJsonString() const
     return toJson().serialize();
 }
 
-bool Person::fromJson(const picojson::value &json, Person &out, std::string &error)
+bool Person::applyJson(const picojson::value &json, Person &target, std::string &error)
 {
     if (!json.is<picojson::object>()) {
         error = "payload must be a JSON object";
@@ -83,45 +83,80 @@ bool Person::fromJson(const picojson::value &json, Person &out, std::string &err
     }
 
     const picojson::object &obj = json.get<picojson::object>();
-    Person parsed;
+
+    // Work on a copy so a type error partway through leaves the caller's person
+    // untouched rather than half-updated.
+    Person merged = target;
 
     picojson::object::const_iterator it = obj.find("id");
-    if (it != obj.end() && !it->second.is<picojson::null>()) {
-        if (!it->second.is<double>()) {
+    if (it != obj.end()) {
+        if (it->second.is<picojson::null>()) {
+            merged.clearId();
+        }
+        else if (!it->second.is<double>()) {
             error = "'id' must be a number";
             return false;
         }
-        parsed.setId(static_cast<long long>(it->second.get<double>()));
+        else {
+            merged.setId(static_cast<long long>(it->second.get<double>()));
+        }
     }
 
     it = obj.find("name");
-    if (it != obj.end() && !it->second.is<picojson::null>()) {
-        if (!it->second.is<std::string>()) {
+    if (it != obj.end()) {
+        if (it->second.is<picojson::null>()) {
+            // Required, so clearing it fails validation with a clear message.
+            merged.setName("");
+        }
+        else if (!it->second.is<std::string>()) {
             error = "'name' must be a string";
             return false;
         }
-        parsed.setName(it->second.get<std::string>());
+        else {
+            merged.setName(it->second.get<std::string>());
+        }
     }
 
     it = obj.find("email");
-    if (it != obj.end() && !it->second.is<picojson::null>()) {
-        if (!it->second.is<std::string>()) {
+    if (it != obj.end()) {
+        if (it->second.is<picojson::null>()) {
+            merged.setEmail("");
+        }
+        else if (!it->second.is<std::string>()) {
             error = "'email' must be a string";
             return false;
         }
-        parsed.setEmail(it->second.get<std::string>());
+        else {
+            merged.setEmail(it->second.get<std::string>());
+        }
     }
 
-    // An absent "address" and an explicit null both mean "no address", which is
-    // the round trip of what toJson() writes.
+    // The only genuinely nullable column: an explicit null clears it, while an
+    // absent key leaves whatever was already there.
     it = obj.find("address");
-    if (it != obj.end() && !it->second.is<picojson::null>()) {
-        if (!it->second.is<std::string>()) {
+    if (it != obj.end()) {
+        if (it->second.is<picojson::null>()) {
+            merged.clearAddress();
+        }
+        else if (!it->second.is<std::string>()) {
             error = "'address' must be a string";
             return false;
         }
-        parsed.setAddress(it->second.get<std::string>());
+        else {
+            merged.setAddress(it->second.get<std::string>());
+        }
     }
+
+    target = merged;
+    error.clear();
+    return true;
+}
+
+bool Person::fromJson(const picojson::value &json, Person &out, std::string &error)
+{
+    Person parsed;
+    if (!applyJson(json, parsed, error))
+        return false;
 
     out = parsed;
     return true;

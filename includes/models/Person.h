@@ -44,10 +44,19 @@ public:
     picojson::value toJson() const;
     std::string toJsonString() const;
 
-    // Reads a person from a JSON object. An absent or null "address" leaves the
-    // field null; an absent "id" leaves the person unsaved. Returns false and
-    // fills `error` when the payload is not a JSON object or a field has the
-    // wrong type.
+    // Merges a JSON object into an existing person, which is what makes partial
+    // updates possible:
+    //
+    //   key absent        -> the field keeps its current value
+    //   key present, null -> the field is cleared
+    //   key present       -> the field takes the new value
+    //
+    // Returns false and fills `error` when the payload is not a JSON object or
+    // a field has the wrong type.
+    static bool applyJson(const picojson::value &json, Person &target, std::string &error);
+
+    // Reads a person from a JSON object, starting from a blank person. Absent
+    // keys therefore come out unset rather than unchanged.
     static bool fromJson(const picojson::value &json, Person &out, std::string &error);
 
     // Checks the constraints the table enforces, so a bad payload is rejected
